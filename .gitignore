@@ -4,11 +4,11 @@
 !readme.md
 !.gitkeep
 !*.sv
-!/
-!tools/
+!tools
 !*.txt
 !*.pdf
 !*.log
 !*.f
 !*.do
 !*.bat
+!/
