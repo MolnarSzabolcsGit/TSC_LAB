@@ -19,62 +19,98 @@ module instr_register_test (tb_ifc io);  // interface port
 
   int seed = 555;
 
-  initial begin
-    $display("\nReseting the instruction register...");
-    io.cb.write_pointer   <= 5'h00;      // initialize write pointer
-    io.cb.read_pointer    <= 5'h1F;      // initialize read pointer
-    io.cb.load_en         <= 1'b0;       // initialize load control line
-    io.cb.reset_n         <= 1'b0;       // assert reset_n (active low)
-    repeat (2) @(io.cb) ;                // hold in reset for 2 clock cycles
-    io.cb.reset_n         <= 1'b1;       // deassert reset_n (active low)
-
-    $display("\nWriting values to register stack...");
-    @(io.cb) io.cb.load_en <= 1'b1;      // enable writing to register
-    repeat (3) begin
-      @(io.cb) randomize_transaction;
-      @(io.cb) print_transaction;
-    end
-    @(io.cb) io.cb.load_en <= 1'b0;      // turn-off writing to register
-
-    $display("\nReading back the same register locations written...");
-    for (int i=0; i<=2; i++) begin
-      // A later lab will replace this loop with iterating through a
-      // scoreboard to determine which addresses were written and the
-      // expected values to be read back
-      @(io.cb) io.cb.read_pointer <= i;
-      @(io.cb) print_results;
-    end
-
-    @(io.cb) $finish;
-  end
-
-  function void randomize_transaction;
-    // A later lab will replace this function with SystemVerilog
-    // constrained random values
-    //
-    // The static temp variable is required in order to write to fixed
-    // addresses of 0, 1 and 2.  This will be replaced with randomized
-    // write_pointer values in a later lab
-    //
+  class Transaction;
+    rand opcode_t       opcode;
+    rand operand_t      operand_a, operand_b;
+    address_t      write_pointer;
     static int temp = 0;
-    io.cb.operand_a     <= $random(seed)%16;                 // between -15 and 15
-    io.cb.operand_b     <= $unsigned($random)%16;            // between 0 and 15
-    io.cb.opcode        <= opcode_t'($unsigned($random)%8);  // between 0 and 7, cast to opcode_t type
-    io.cb.write_pointer <= temp++;
-  endfunction: randomize_transaction
+   
+    constraint const_operand_a {
+      operand_a >= -15;
+      operand_a <= 15;
+    }
 
-  function void print_transaction;
-    $display("Writing to register location %0d: ", io.cb.write_pointer);
-    $display("  opcode = %0d (%s)", io.cb.opcode, io.cb.opcode.name);
-    $display("  operand_a = %0d",   io.cb.operand_a);
-    $display("  operand_b = %0d\n", io.cb.operand_b);
+    constraint const_operand_b {
+      operand_b >= 0;
+      operand_b <= 15;
+    }
+
+    function void print_transaction();
+      $display("Writing to register location %0d: ", write_pointer);
+      $display("  opcode = %0d (%s)", opcode, opcode.name);
+      $display("  operand_a = %0d",   operand_a);
+      $display("  operand_b = %0d\n", operand_b);
   endfunction: print_transaction
 
-  function void print_results;
-    $display("Read from register location %0d: ", io.cb.read_pointer);
-    $display("  opcode = %0d (%s)", io.cb.instruction_word.opc, io.cb.instruction_word.opc.name);
-    $display("  operand_a = %0d",   io.cb.instruction_word.op_a);
-    $display("  operand_b = %0d\n", io.cb.instruction_word.op_b);
-  endfunction: print_results
+  endclass : Transaction
+
+  class Driver;
+    Transaction tr;
+    virtual tb_ifc vifc;
+
+    function new(virtual tb_ifc vifc);
+      tr = new();
+      this.vifc = vifc;
+    endfunction
+
+    task reset_signals();
+       $display("\nReseting the instruction register...");
+       vifc.cb.write_pointer   <= 5'h00;      // initialize write pointer
+       vifc.cb.read_pointer    <= 5'h1F;      // initialize read pointer
+       vifc.cb.load_en         <= 1'b0;       // initialize load control line
+       vifc.cb.reset_n         <= 1'b0;       // assert reset_n (active low)
+    endtask
+
+    task assign_signals();
+      $display("\nWriting values to register stack...");
+      @(vifc.cb) vifc.cb.load_en <= 1'b1;      // enable writing to register
+      repeat (3) begin
+        @(vifc.cb) tr.randomize();
+        vifc.cb.write_pointer <= tr.temp++;
+        vifc.cb.operand_a <= tr.operand_a;
+        vifc.cb.operand_b <= tr.operand_b;
+        vifc.cb.opcode <= tr.opcode;
+        @(vifc.cb) tr.print_transaction;
+      end
+      @(vifc.cb) vifc.cb.load_en <= 1'b0;      // turn-off writing to register
+    endtask
+
+    task generate_transaction;
+      this.reset_signals();
+      repeat (2) @(vifc.cb) ;                // hold in reset for 2 clock cycles
+      vifc.cb.reset_n         <= 1'b1;       // deassert reset_n (active low)
+      this.assign_signals();
+    endtask
+  endclass: Driver
+
+  class Monitor;
+    virtual tb_ifc vifc;
+    function new(virtual tb_ifc vifc);
+      this.vifc = vifc;
+    endfunction
+    task read;
+      for (int i=0; i<=2; i++) begin
+      @(vifc.cb) vifc.cb.read_pointer <= i;
+      @(vifc.cb) print_results;
+    end
+    endtask
+
+    function void print_results();
+        $display("Read from register location %0d: ", vifc.cb.read_pointer);
+        $display("  opcode = %0d (%s)", vifc.cb.instruction_word.opc, vifc.cb.instruction_word.opc.name);
+        $display("  operand_a = %0d",   vifc.cb.instruction_word.op_a);
+        $display("  operand_b = %0d\n", vifc.cb.instruction_word.op_b);
+    endfunction;
+  endclass
+
+  initial begin
+    Driver drv;
+    Monitor mon;
+    drv = new(io);
+    mon = new(io);
+    drv.generate_transaction();
+    mon.read();
+    @(io.cb) $finish;
+  end
 
 endmodule: instr_register_test
