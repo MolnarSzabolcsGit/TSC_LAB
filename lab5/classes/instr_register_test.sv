@@ -48,9 +48,67 @@ module instr_register_test (tb_ifc io);  // interface port
     Transaction tr;
     virtual tb_ifc vifc;
 
+    covergroup inputs_measure;
+    
+    cov_0: coverpoint vifc.cb.opcode {
+      bins val_ZERO = {ZERO};
+      bins val_PASSA = {PASSA};
+      bins val_PASSB = {PASSB};
+      bins val_ADD = {ADD};
+      bins val_SUB = {SUB};
+      bins val_MULT = {MULT};
+      bins val_DIV = {DIV};
+      bins val_MOD = {MOD};
+    }
+    
+    cov_1: coverpoint vifc.cb.operand_a {
+      bins val_operand_a[] = {[-15:15]};
+    }
+
+    cov_2: coverpoint vifc.cb.operand_b {
+      bins val_operand_b[] = {[0:15]};
+    }
+
+    cov_3: coverpoint vifc.cb.operand_a {
+      bins val_operand_a_pos = {[0:15]};
+      bins val_operand_a_neg = {[-15:0]};
+    }
+
+    cov_4: cross cov_0, cov_3 {
+      ignore_bins poz_ignore = binsof(cov_3.val_operand_a_pos);
+    }
+
+    cov_limit_opA: coverpoint vifc.cb.operand_a {
+       bins val_operand_a_min_NEG = {-15};
+       bins val_operand_a_max_POS = {15};
+    }
+
+    cov_limit_opB: coverpoint vifc.cb.operand_b {
+       bins val_operand_b_ZERO = {0};
+       bins val_operand_b_max_POS = {15};
+    }
+
+    cov_min_opA: coverpoint vifc.cb.operand_a {
+       bins val_operand_a_MIN = {-15};
+    }
+    
+    cov_min_opB: coverpoint vifc.cb.operand_b {
+       bins val_operand_b_MIN = {0};
+    }
+
+    cov_5: cross cov_0, cov_limit_opA, cov_limit_opB {
+    }
+
+    cov_6: cross cov_0, cov_min_opA, cov_min_opB {
+    }
+
+
+    endgroup
+
     function new(virtual tb_ifc vifc);
       tr = new();
       this.vifc = vifc;
+      inputs_measure = new();
     endfunction
 
     task reset_signals();
@@ -71,6 +129,7 @@ module instr_register_test (tb_ifc io);  // interface port
         vifc.cb.operand_b <= tr.operand_b;
         vifc.cb.opcode <= tr.opcode;
         @(vifc.cb) tr.print_transaction;
+        this.inputs_measure.sample();
       end
       @(vifc.cb) vifc.cb.load_en <= 1'b0;      // turn-off writing to register
     endtask
