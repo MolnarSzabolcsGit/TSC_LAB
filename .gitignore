@@ -1,0 +1,14 @@
+*
+!.gitattributes
+!.gitignore
+!readme.md
+!.gitkeep
+!*.sv
+!*.txt
+!*.pdf
+!*.log
+!*.f
+!*.do
+!*.bat
+!/sim
+!*/
